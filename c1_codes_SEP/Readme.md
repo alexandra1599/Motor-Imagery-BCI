@@ -130,15 +130,6 @@ The active trigger mode is printed to stdout on startup.
 
 ---
 
-## Known Issues / Notes
-
-- `a1_SEP.py` contains a reference to `sendTiD(101)` which is undefined in that script (it uses UDP/LSL, not cnbiloop). This line should be replaced with the appropriate `send_udp_message(...)` call or removed.
-- `a1_PPD.py` imports `serial` and `serialCommunication` but does not appear to use them; these can likely be removed.
-- The `trials` array in `c0_config.py` is generated at import time, meaning it is fixed for the duration of one run but regenerated on each process start.
-- Audio cue (`RestStimulation.wav`) in `a1_SEP_PPD.py` uses `pygame.mixer` with a `try/except` fallback; in `a2_Fwave.py` it uses `playsound` with no fallback.
-
----
-
 ## Related
 
 - `ndf_main_adap.py` — online BCI classifier with Riemannian recentering and FES triggering
