@@ -35,9 +35,9 @@ from scipy.signal import butter, lfilter
 
 from pyriemann.preprocessing import Whitening
 
-from a0_param_init import a0_param_initialization
-from d1_initialize_decoder import d1_initialize_decoder
-from d0_extract_session_features import d0_extract_session_features
+from functions.a0_param_init import a0_param_initialization
+from functions.d1_initialize_decoder import d1_initialize_decoder
+from functions.d0_extract_session_features import d0_extract_session_features
 
 # =============================================================================
 # *** CHANGE THESE EACH DAY ***
