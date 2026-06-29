@@ -1,0 +1,198 @@
+#!/bin/bash
+echo "
+########################
+### START EXPERIMENT ###
+########################"
+
+# LabRecorder RCS settings
+LAB_RECORDER_PORT=22345
+LAB_RECORDER_IP="127.0.0.1"
+
+# Function to send command to LabRecorder via RCS using Python
+send_rcs() {
+    python3 -c "
+import socket, time
+s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+s.connect(('$LAB_RECORDER_IP', $LAB_RECORDER_PORT))
+s.sendall(b'$1\n')
+time.sleep(0.2)
+s.close()
+"
+}
+
+# Function to select streams, set filename, and start recording
+start_recording() {
+    local filename=$1
+    echo "  [LabRecorder] Setting filename: $filename"
+    send_rcs "filename {root:$(dirname $filename)} {template:$(basename $filename)}"
+    sleep 0.5
+    echo "  [LabRecorder] Selecting streams..."
+    send_rcs "select {type:Markers} {name:MarkerStream}"
+    sleep 0.5
+    send_rcs "select {type:EEG} {name:eegoSports 000126}"
+    sleep 0.5
+    echo "  [LabRecorder] Starting recording..."
+    send_rcs "start"
+    sleep 1
+    echo "  [LabRecorder] Recording started."
+}
+
+# Function to stop recording
+stop_recording() {
+    echo "  [LabRecorder] Stopping recording..."
+    send_rcs "stop"
+    sleep 1
+    echo "  [LabRecorder] Recording stopped."
+}
+
+read -p "Subject ID: " subID
+subID=$(printf "%03d" $subID)
+read -p "Left (l) or Right (r): " hand
+
+classes=""
+
+read -p "[1] Resting State, [2] SEP-PPD, [3] MI BCI, [4] TESS, [5] TMS-SICI, [6] Fwave, [7] end Session? " mode
+
+while [ "${mode}" != "7" ]
+do
+    if [ "${mode}" = "3" ]
+    then
+        read -p "off (1) or on (2): " sessionType
+    fi
+
+    read -p "Session ID: " sessionID
+    sessionID=$(printf "%03d" $sessionID)
+    read -p "Recording ID: " recID
+    dir="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null && pwd )"
+    datetime="$(date +%Y)_$(date +%m)_$(date +%d)_$(date +%H%M%S)"
+
+    if [ "${sessionType}" = "2" ]
+    then
+        if [ "${mode}" = "3" ]
+        then
+            read -p "Threshold Move /100: " Move_th
+            read -p "Threshold Rest /100: " Rest_th
+        fi
+    fi
+
+    expFolder=$dir/f1_data
+    subjectFolder=$expFolder/"Subject_"$subID
+
+    if [ "${mode}" = "1" ]
+    then
+        sessionFolder=$subjectFolder/"Subject_"$subID"_Session_"${sessionID}"_RestingState"${classes}
+        xdffilename=$sessionFolder/"Subject_"$subID"_RestingState_s"${sessionID}"_r"${recID}"_"$datetime".xdf"
+        logfilename=$sessionFolder/"Subject_"$subID"_RestingState_s"${sessionID}"_r"${recID}"_"$datetime".log"
+    elif [ "${mode}" = "2" ]
+    then
+        sessionFolder=$subjectFolder/"Subject_"$subID"_Session_"${sessionID}"_SEP_PPD"${classes}
+        xdffilename=$sessionFolder/"Subject_"$subID"_SEP_PPD_s"${sessionID}"_r"${recID}"_"$datetime".xdf"
+        logfilename=$sessionFolder/"Subject_"$subID"_SEP_PPD_s"${sessionID}"_r"${recID}"_"$datetime".log"
+    elif [ "${mode}" = "3" ]
+    then
+        if [ "${sessionType}" = "1" ]
+        then
+            sessionFolder=$subjectFolder/"Subject_"$subID"_Session_"${sessionID}"_MI_Offline_BCI_FES"${classes}
+        else
+            sessionFolder=$subjectFolder/"Subject_"$subID"_Session_"${sessionID}"_MI_Online_BCI_FES"${classes}
+        fi
+        xdffilename=$sessionFolder/"Subject_"$subID"_MI_BCI_s"${sessionID}"_r"${recID}"_"$datetime".xdf"
+        logfilename=$sessionFolder/"Subject_"$subID"_MI_BCI_s"${sessionID}"_r"${recID}"_"$datetime".log"
+    elif [ "${mode}" = "4" ]
+    then
+        sessionFolder=$subjectFolder/"Subject_"$subID"_Session_"${sessionID}"_TESS"${classes}
+        xdffilename=$sessionFolder/"Subject_"$subID"_TESS_s"${sessionID}"_r"${recID}"_"$datetime".xdf"
+        logfilename=$sessionFolder/"Subject_"$subID"_TESS_s"${sessionID}"_r"${recID}"_"$datetime".log"
+        read -p "[1] 1, [2] 2? " carrier
+    elif [ "${mode}" = "5" ]
+    then
+        sessionFolder=$subjectFolder/"Subject_"$subID"_Session_"${sessionID}"_TMS_SICI"${classes}
+        xdffilename=$sessionFolder/"Subject_"$subID"_SICI_s"${sessionID}"_r"${recID}"_"$datetime".xdf"
+        logfilename=$sessionFolder/"Subject_"$subID"_SICI_s"${sessionID}"_r"${recID}"_"$datetime".log"
+        read -p "TMS /dev/ttyUSB Number (0,1,2,...): " TMSPort
+        TMSPort=$(printf "%03d" $TMSPort)
+    elif [ "${mode}" = "6" ]
+    then
+        sessionFolder=$subjectFolder/"Subject_"$subID"_Session_"${sessionID}"_Fwave"${classes}
+        xdffilename=$sessionFolder/"Subject_"$subID"_Fwave_s"${sessionID}"_r"${recID}"_"$datetime".xdf"
+        logfilename=$sessionFolder/"Subject_"$subID"_Fwave_s"${sessionID}"_r"${recID}"_"$datetime".log"
+    fi
+
+    mkdir -p $sessionFolder/
+
+    echo "
+    ----> Actual Run <-----
+    "
+    recID=$(printf "%03d" $recID)
+
+    # Start LabRecorder
+    start_recording "$xdffilename"
+
+    sleep 3
+
+    if [ "${mode}" = "1" ]
+    then
+        cd c4_codes_RestingState
+        python3 a1_restingState.py $logfilename
+        cd ..
+        stop_recording
+
+    elif [ "${mode}" = "2" ]
+    then
+        cd c1_codes_SEP
+        python3 a1_SEP_PPD.py $logfilename $hand
+        cd ..
+        stop_recording
+
+    elif [ "${mode}" = "3" ]
+    then
+        if [ "${sessionType}" = "1" ]
+        then
+            cd c2_Visual_interface
+            python3 a1_offline_FES.py $logfilename
+            cd ..
+            stop_recording
+        elif [ "${sessionType}" = "2" ]
+	then
+    		read -p "Decoder source — [1] Offline only, [2] Offline+Online: " decoder_choice
+
+    		gnome-terminal --working-directory=$dir/c2_Visual_interface \
+        	--title "Visual Interface" -- bash -c \
+        	"python3 -i a2_online_FES.py $logfilename $Move_th $Rest_th; exec bash"
+
+    		sleep 4
+
+    		gnome-terminal --working-directory=$dir \
+        	--title "BCI Controller" -- bash -c \
+        	"python3 ndf_main_adap.py $subID $sessionID $recID $decoder_choice; exec bash"
+	
+            
+            read -p "Press ENTER when experiment is complete to stop recording..."
+            stop_recording
+        fi
+
+    elif [ "${mode}" = "4" ]
+    then
+        cd c3_codes_TESS
+        gnome-terminal -e "python3 d1_TESS20min.py $carrier $logfilename" --title "Visual Interface"
+        cd ..
+        read -p "Press ENTER when TESS experiment is complete to stop recording..."
+        stop_recording
+
+    elif [ "${mode}" = "5" ]
+    then
+        cd c5_codes_TMS_SICI
+        python3 a2_SICI_protocol.py $logfilename $TMSPort $clientIP
+        cd ..
+        stop_recording
+
+    elif [ "${mode}" = "6" ]
+    then
+        cd c1_codes_SEP
+        python3 a2_Fwave.py $logfilename $hand
+        cd ..
+        stop_recording
+    fi
+
+    read -p "[1] Resting State, [2] SEP-PPD, [3] MI BCI, [4] TESS, [5] TMS-SICI, [6] Fwave, [7] end Session? " mode
+done
