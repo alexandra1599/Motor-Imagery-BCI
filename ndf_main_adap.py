@@ -9,7 +9,8 @@ Covariance pipeline (mirrors al0_builddecoder.py exactly):
   2. Batch Riemannian whitening — using the FITTED whitener saved in the
      decoder (same reference mean as training → same whitened space)
   3. Sequential adaptive recentering — cold-starts at None each run,
-     (UPDATE_DURING_TRIAL controls whether recentering updates during trials or only between them)
+     matching the Robot+FES pipeline (UPDATE_DURING_TRIAL controls whether
+     recentering updates during trials or only between them)
   4. MDM classify against prototypes (which live in batch-whitened space)
 
   - Training:  prototypes in whitened space
@@ -38,11 +39,11 @@ from ndf_shared import (
     send_probabilities, StreamBuffer,
     make_eog_filter,
 )
-from functions.m0_initializeParams import initialize_params
-from functions.EOG import eog_checker
-from functions.adaptive_recenter import AdaptiveRecenter
+from m0_initializeParams import initialize_params
+from EOG import eog_checker
+from adaptive_recenter import AdaptiveRecenter
 
-import functions.config_tess as config
+import config_tess as config
 
 # =============================================================================
 # Helpers
@@ -363,13 +364,18 @@ def _classify_window(mode: int) -> float:
         return 0.5
 
     # Step 1: Trace-normalize + LW (matches _extract_covariance in training)
+    # No demean here — baseline subtraction already happened in
+    # _get_baseline_corrected_window, matching _epoch_task which subtracts
+    # the fixed pre-trial baseline before calling _extract_covariance.
+    # window: (n_ch, n_samples) — transpose to (n_samples, n_ch) for LW
+    window_T = window.T   # (n_samples, n_ch)
     cov = window @ window.T
     tr  = np.trace(cov)
     if tr <= 0:
         tr = 1e-12
     cov = cov / tr
 
-    lam = LedoitWolf().fit(window.T).shrinkage_
+    lam = LedoitWolf().fit(window_T).shrinkage_
     n   = cov.shape[0]
     cov = (1 - lam) * cov + lam * (np.trace(cov) / n) * np.eye(n)
 
