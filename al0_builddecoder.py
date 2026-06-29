@@ -1,13 +1,6 @@
 """
 al0_builddecoder.py
 =========================
-Merged decoder-building script combining:
-  - run_script_Reimannian_mdm.py  (TESS pipeline)
-  - a1_BuildDecoderRiemann.py / d0_computeModelRiemannSelectSessions.py
-    (GeoLearning pipeline, session selector + geodesic shift)
-  - pyriemann-style enhancements (trace-normalization, population whitening,
-    dual-threshold calibration with reject option)
-
 Covariance pipeline (must match ndf_main_adap.py exactly):
   1. Trace-normalize + LW shrinkage      (in _extract_covariance)
   2. Batch Riemannian whitening          (pyriemann Whitening, fitted here,
@@ -15,11 +8,6 @@ Covariance pipeline (must match ndf_main_adap.py exactly):
   3. Sequential adaptive recentering     (online only — NOT applied here,
                                           so prototypes live in whitened space)
   4. MDM fit on whitened covariances
-
-This matches the Robot+FES pipeline exactly:
-  - Training:  batch Whitening.fit_transform → MDM prototypes in whitened space
-  - Online:    Whitening.transform (same fitted ref) → sequential recentering
-                → compare to prototypes
 
 Usage:
     python3 al0_builddecoder.py
