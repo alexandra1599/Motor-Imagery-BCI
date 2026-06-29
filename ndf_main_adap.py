@@ -9,14 +9,11 @@ Covariance pipeline (mirrors al0_builddecoder.py exactly):
   2. Batch Riemannian whitening — using the FITTED whitener saved in the
      decoder (same reference mean as training → same whitened space)
   3. Sequential adaptive recentering — cold-starts at None each run,
-     matching the Robot+FES pipeline (UPDATE_DURING_TRIAL controls whether
-     recentering updates during trials or only between them)
+     (UPDATE_DURING_TRIAL controls whether recentering updates during trials or only between them)
   4. MDM classify against prototypes (which live in batch-whitened space)
 
-This matches the Robot+FES runtime_common.py approach:
-  - Training:  pyriemann Whitening.fit_transform → prototypes in whitened space
-  - Online:    Whitening.transform (same fitted ref) → sequential recentering
-               → compare to prototypes
+  - Training:  prototypes in whitened space
+  - Online:    sequential recentering → compare to prototypes
 
 Usage:
     python3 ndf_main_adap.py <subjectID> <sessionID> <recID> <decoderChoice>
