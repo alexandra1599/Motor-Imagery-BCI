@@ -1,7 +1,6 @@
-
 # SEP / PPD Stimulation Paradigms
 
-Pygame-based FES (Functional Electrical Stimulation) delivery scripts for eliciting **Somatosensory Evoked Potentials (SEPs)** and **Paired-Pulse Depression (PPD)** in the context of the TESS Motor Imagery BCI system. All scripts interface with the **Rehamove** stimulator over USB and emit event markers for EEG synchronization.
+Pygame-based FES (Functional Electrical Stimulation) delivery scripts for eliciting **Somatosensory Evoked Potentials (SEPs)** and **Paired-Pulse Depression (PPD)** in the context of the TESS Motor Imagery BCI system. All scripts interface with the **Rehamove** stimulator over USB and emit event markers via UDP for EEG synchronization.
 
 ---
 
@@ -10,10 +9,10 @@ Pygame-based FES (Functional Electrical Stimulation) delivery scripts for elicit
 ```
 .
 ├── c0_config.py        # Shared configuration: timing, FES params, trial randomization
-├── a1_SEP.py           # SEP-only paradigm (single pulses, LSL + UDP markers)
-├── a1_PPD.py           # PPD-only paradigm (paired pulses, TiD/cnbiloop markers)
+├── a1_SEP.py           # SEP-only paradigm (single pulses)
+├── a1_PPD.py           # PPD-only paradigm (paired pulses)
 ├── a1_SEP_PPD.py       # Combined SEP + PPD paradigm (interleaved, randomized)
-└── a2_Fwave.py         # F-wave paradigm (single pulses, TiD markers, audio cue)
+└── a2_Fwave.py         # F-wave paradigm (single pulses, separate config)
 ```
 
 ---
@@ -21,35 +20,45 @@ Pygame-based FES (Functional Electrical Stimulation) delivery scripts for elicit
 ## Paradigm Overview
 
 ### SEP (`a1_SEP.py`)
-Delivers **single FES pulses** at sensory intensity to evoke cortical somatosensory responses. Each pulse is timestamped via:
-- **UDP socket** → marker code `101` sent to `127.0.0.1:12345`
-- **LSL outlet** (`MarkerStream`, 2-channel float32)
-- Optional **hardware trigger** via USB2LPT
-
-Inter-stimulus interval: `restTime + U(0, 0.5)` seconds (jittered).
+Delivers **single FES pulses** at sensory intensity to evoke cortical somatosensory responses. Marker `101` is sent via UDP and LSL on each pulse. Inter-stimulus interval: `restTime + U(0, 0.5)` s (jittered).
 
 ### PPD (`a1_PPD.py`)
-Delivers **paired FES pulses** separated by `PPD_IPI` ms to measure **paired-pulse depression** of the SEP. Markers:
-- `101` → first pulse of pair
-- `201` → second pulse of pair
+Delivers **paired FES pulses** separated by `PPD_IPI` ms to measure paired-pulse depression of the SEP. Markers:
+- `201` → first pulse of pair
+- `202` → second pulse of pair
 
-Marker delivery via **TiD/cnbiloop** (`sendTiD`) and optional hardware trigger. Inter-trial interval: `restTime + U(0, 1)` s.
+Inter-trial interval: `restTime + U(0, 1)` s.
 
 ### SEP + PPD Interleaved (`a1_SEP_PPD.py`)
-The primary experimental script. Delivers a **randomized sequence** of SEP (single) and PPD (paired) trials as defined in `c0_config.py`. Trial types:
+The primary experimental script. Delivers a **randomized sequence** of SEP and PPD trials as defined in `c0_config.py`. Trial types:
 - `trials[i] == 1` → SEP: single pulse, marker `101`
 - `trials[i] == 2` → PPD: paired pulses, markers `201` + `202` (separated by `PPD_IPI` ms)
 
-Features a **countdown welcome screen** (5 s, spacebar-skippable), fixation cross display, audio cue (`RestStimulation.wav`), and fallback from USB2LPT → ARDUINO trigger. Markers via UDP + LSL.
+Features a **countdown welcome screen** (5 s, spacebar-skippable), fixation cross display, and audio cue (`RestStimulation.wav`).
 
 ### F-wave (`a2_Fwave.py`)
-Single-pulse paradigm optimized for **F-wave** elicitation (supramaximal motor stimulation). Uses `playsound` for audio cueing and TiD/cnbiloop markers. Loads its own config from `a0_config_Fwave` (not included here). Progress bar displayed during stimulation loop.
+Single-pulse paradigm for **F-wave** elicitation. Loads its own config from `a0_config_Fwave` (not included here). Sends marker `101` per pulse. Progress bar displayed during the stimulation loop. Audio cue via `pygame.mixer`.
+
+---
+
+## Marker Codes
+
+All scripts send markers via UDP to `127.0.0.1:12345`. Codes are harmonized across all scripts:
+
+| Code | Variable | Event |
+|---|---|---|
+| `32766` | `MSG_RUN` | Start / end of run |
+| `101` | `MSG_SEP` / `MSG_FWAVE` | SEP single pulse or F-wave pulse |
+| `201` | `MSG_PPD_1` | First pulse of PPD pair |
+| `202` | `MSG_PPD_2` | Second pulse of PPD pair |
+
+`a1_SEP.py` and `a1_SEP_PPD.py` additionally push markers to an **LSL outlet** (`MarkerStream`, 2-channel float32).
 
 ---
 
 ## Configuration (`c0_config.py`)
 
-All shared parameters are centralized here. Key values:
+All shared parameters for `a1_SEP.py`, `a1_PPD.py`, and `a1_SEP_PPD.py`:
 
 | Parameter | Default | Description |
 |---|---|---|
@@ -60,21 +69,12 @@ All shared parameters are centralized here. Key values:
 | `repetitions` | `25` | Trials per condition (SEP and PPD each) |
 | `pulseWidth` | `200` µs | FES pulse width |
 | `sensoryIntensity` | `-6.0` mA | Sensory-level stimulation amplitude |
-| `motorIntensity` | `5.0` mA | Motor-level stimulation amplitude (reserved) |
+| `motorIntensity` | `5.0` mA | Motor-level amplitude (reserved) |
 | `FES_port` | `/dev/ttyUSB0` | Rehamove USB device path |
 
-Trial randomization in `c0_config.py` uses `random.sample` without replacement to interleave `n_SEP` single-pulse and `n_PPD` paired-pulse trials into a shuffled `trials` array.
+Trial randomization uses `random.sample` without replacement to interleave `n_SEP` single-pulse and `n_PPD` paired-pulse trials into a shuffled `trials` array. This runs at import time and is fixed for the duration of one process.
 
----
-
-## Marker Codes
-
-| Code | Event |
-|---|---|
-| `32766` | Start / end of run |
-| `101` | SEP pulse (single) OR first pulse of PPD pair |
-| `201` | Second pulse of PPD pair (`a1_PPD.py`) / SEP pulse (`a1_SEP.py` — *note: see bug below*) |
-| `202` | Second pulse of PPD pair (`a1_SEP_PPD.py`) |
+`a2_Fwave.py` uses a separate `a0_config_Fwave.py` with the same parameter conventions.
 
 ---
 
@@ -86,8 +86,6 @@ pyautogui
 pylsl
 rehamove
 python_client   # for Trigger (USB2LPT / ARDUINO)
-cnbiloop        # for TiD-based marker streaming (a1_PPD.py, a2_Fwave.py)
-playsound       # a2_Fwave.py only
 numpy
 ```
 
@@ -96,7 +94,7 @@ Install Python deps:
 pip install pygame pyautogui pylsl numpy
 ```
 
-The `rehamove`, `cnbiloop`, `python_client`, and `serialCommunication` packages are hardware-specific and must be sourced from their respective vendor SDKs.
+The `rehamove` and `python_client` packages are hardware-specific and must be sourced from their respective vendor SDKs.
 
 ---
 
@@ -113,9 +111,7 @@ python a1_SEP_PPD.py logs/sub001_run1.txt left
 - `logfile_path`: path to `.txt` log file (opened in append mode)
 - `hand`: `left` or `right` (logged for reference)
 
-The script appends experiment parameters to the log file at the end of each run.
-
-Ensure the Rehamove device is connected at `/dev/ttyUSB0` (or update `FES_port` in `c0_config.py`) before launching.
+The script appends all experiment parameters to the log file at the end of each run. Ensure the Rehamove device is connected at `/dev/ttyUSB0` (or update `FES_port` in `c0_config.py`) before launching.
 
 ---
 
@@ -123,10 +119,17 @@ Ensure the Rehamove device is connected at `/dev/ttyUSB0` (or update `FES_port` 
 
 All scripts attempt hardware trigger initialization in order:
 1. `USB2LPT` (parallel port adapter)
-2. `ARDUINO` (serial trigger board)
-3. Software-only (no hardware trigger, markers via LSL/UDP/TiD only)
+2. `ARDUINO` (serial trigger board)  
+3. Software-only (UDP/LSL markers only)
 
 The active trigger mode is printed to stdout on startup.
+
+---
+
+## Notes
+
+- The `trials` array in `c0_config.py` is generated at import time — it is fixed per run but re-randomized on each process start.
+- Audio cue (`RestStimulation.wav`) uses `pygame.mixer` with a `try/except` fallback in all scripts that play audio.
 
 ---
 
