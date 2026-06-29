@@ -41,11 +41,11 @@ from ndf_shared import (
     send_probabilities, StreamBuffer,
     make_eog_filter,
 )
-from m0_initializeParams import initialize_params
-from EOG import eog_checker
-from adaptive_recenter import AdaptiveRecenter
+from functions.m0_initializeParams import initialize_params
+from functions.EOG import eog_checker
+from functions.adaptive_recenter import AdaptiveRecenter
 
-import config_tess as config
+import functions.config_tess as config
 
 # =============================================================================
 # Helpers
