@@ -1,17 +1,11 @@
-
 ## Packages to import:
-import serial
 import sys
 import os
 from pathlib import Path
 import numpy as np
 dirP = os.path.abspath(os.path.join(os.getcwd(), os.pardir))
-# #print(dirP + '/4_ref_other')
-sys.path.append(dirP + '/c2_codes_BCI/z1_ref_other/0_lib')
-sys.path.append(dirP + '/c2_codes_BCI/c1_codes/1_packages')
-sys.path.append(dirP + '/c5_codes_TMS_SICI')
+sys.path.append(dirP + '/c1_codes_SEP/1_packages')
 
-from playsound import playsound
 from a0_config_Fwave import *
 
 ## Other Packages:
@@ -22,19 +16,29 @@ import random
 from pygame.locals import *
 import pyautogui
 import math
-
-## LOAD CONFIGURATIONS FOR THE TASK
+import socket
 
 ## FES Rehamove Library
 import time
 import math 
 from rehamove import * 	# Import rehamove library
 
-import cnbiloop
-from cnbiloop import BCI, BCI_tid
 from python_client import Trigger
 
-from serialCommunication import SerialWriter
+
+# *************************************************************************************************
+# UDP Marker Functions
+# *************************************************************************************************
+def send_udp_message(sock, ip, port, message):
+    sock.sendto(message.encode('utf-8'), (ip, port))
+    print(f"Sent UDP message to {ip}:{port}: {message}")
+
+# Setup UDP
+udp_marker = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+ip   = '127.0.0.1'
+port = 12345
+MSG_RUN    = '32766'  # start / end of run
+MSG_FWAVE  = '101'    # F-wave single pulse
 
 
 black=(0,0,0)
@@ -42,13 +46,6 @@ white=(225,225,225)
 
 pygame.init()
 font = pygame.font.SysFont('helvetica',60)
-
-bci = BCI_tid.BciInterface()
-
-def sendTiD(Event_):
-#    pass
-	bci.id_msg_bus.SetEvent(Event_)
-	bci.iDsock_bus.sendall(str.encode(bci.id_serializer_bus.Serialize()))
 
 screen = pyautogui.size();
 
@@ -81,7 +78,7 @@ Bigger_rectangle_Y = screen_height / 2 - bar_height / 2
 Bigthickness = 3  # thickness of the edge lines for the rectangle and other shapes
 
 white=(225,225,225)
-FES_channel = 'red'
+
 # Initial position of the bar in the middle of the rectangle:
 initial_x = screen_width/2 - bar_width/2
 initial_y = screen_height/2 - bar_height/2
@@ -153,7 +150,7 @@ while welcome:
             	welcome = False
 
 
-sendTiD(32766)  # send Event CUE: 55555 to LOOP to indicate start of TESS
+send_udp_message(udp_marker, ip, port, MSG_RUN)  # indicate start of run
 # Left hand and right HandArrows and up arrow
 screen.fill(black)  # clear display
 text = font.render('Rest', True, white)
@@ -165,7 +162,12 @@ textRect.center = (centerOfScreen[0], centerOfScreen[1]-2*text_height)
 screen.blit(text, textRect)
 pygame.display.update()
 
-playsound('RestStimulation.wav')
+pygame.mixer.init()
+try:
+    pygame.mixer.Sound('RestStimulation.wav').play()
+    pygame.time.wait(2000)
+except Exception:
+    print('[Warning] RestStimulation.wav not found — skipping audio.')
 
 FES = Rehamove(FES_port)    # Open USB port (on Windows)
 
@@ -201,7 +203,7 @@ for i in range(0, numTrials, 1):
 	FES.custom_pulse(FES_channel, pulsearray)
 	if hardwareTrigger:
 		parallel.signal(101)
-	sendTiD(101)  # send Event CU
+	send_udp_message(udp_marker, ip, port, MSG_FWAVE)  # F-wave single pulse
 
 	time.sleep(restTime+random.random())
 	stimCnt = stimCnt+1
@@ -210,7 +212,7 @@ for i in range(0, numTrials, 1):
 screen.fill(black)  # clear display
 
 	
-sendTiD(32766)  # send Event CUE: 55555 to LOOP to indicate start of TESS
+send_udp_message(udp_marker, ip, port, MSG_RUN)  # indicate end of run
 logFile = sys.argv[1]
 hand = sys.argv[2]
 print(logFile)
@@ -225,4 +227,3 @@ f.write("FES_freq %f\r\n" % (FES_freq))
 f.write("pulseWidth %f\r\n" % (pulseWidth))
 
 f.close()
-
