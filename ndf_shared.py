@@ -3,7 +3,6 @@ ndf_shared.py
 ==============
 Shared utilities for all ndf_main_*.py online classifier scripts.
 
-Replaces MATLAB cnbiloop (TiD/TiC, ndf_read, stream buffers) with:
   - pylsl StreamInlet  — reads EEG frames
   - UDP socket         — sends probabilities to visual interface
   - numpy ring buffer  — replaces global stream struct
@@ -22,11 +21,11 @@ try:
 except ImportError:
     from pylsl import resolve_byprop as resolve_stream  # pylsl >= 1.16
 
-from covar_extract import extract_covariance
-from cov_interpol import covariance_interpolation
-from stabilizer import stabiliser
-from mdm_decoder import mdm_decoder
-from EOG import eog_checker
+from functions.covar_extract import extract_covariance
+from functions.cov_interpol import covariance_interpolation
+from functions.stabilizer import stabiliser
+from functions.mdm_decoder import mdm_decoder
+from functions.EOG import eog_checker
 
 
 # =============================================================================
@@ -53,7 +52,7 @@ def connect_marker_stream(stream_name: str = 'MarkerStream'):
 
 
 # =============================================================================
-# UDP probability sender  (replaces sendTiC / TiC protocol)
+# UDP probability sender  
 # =============================================================================
 _udp_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 _UDP_IP   = '127.0.0.1'
@@ -63,7 +62,7 @@ _UDP_PORT_PROB = 12347   # probabilities → visual interface
 def send_probabilities(prob: np.ndarray, decoder: dict = None):
     """
     Send class probabilities as a comma-separated UTF-8 string on UDP
-    port 12346, matching the visual/FES driver's receiveTiC() exactly:
+    port 12346:
 
         values = [float(x) for x in data.decode('utf-8').strip().split(',')]
 
@@ -92,12 +91,11 @@ def send_marker_udp(event_id: int):
 
 
 # =============================================================================
-# Ring-buffer stream  (replaces MATLAB global stream struct)
+# Ring-buffer stream  
 # =============================================================================
 class StreamBuffer:
     """
     Circular buffer for EEG + optional EOG/BIP channels.
-    Replaces MATLAB global stream with explicit parameter passing.
     """
     def __init__(self, n_ch: int, n_bip: int, buffer_seconds: float,
                  frame_size: int, fs: float):
