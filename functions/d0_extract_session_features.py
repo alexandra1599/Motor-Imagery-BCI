@@ -426,27 +426,30 @@ def _extract_covariance(eeg: np.ndarray) -> np.ndarray:
     """
     Trace-normalized + Ledoit-Wolf regularized covariance (n_samp, n_ch) -> (n_ch, n_ch).
 
-    Matches the reference pipeline's compute_processed_covariances exactly:
-      1. cov = (seg @ seg.T) / trace(seg @ seg.T)   [trace-norm inline]
-      2. lam = LedoitWolf().fit(seg.T).shrinkage_    [exact LW from raw segment]
-      3. cov = (1-lam)*cov + lam*(trace(cov)/n)*I
+    Matches ndf_main_adap._classify_window exactly:
+      1. cov = (seg @ seg.T)                         [NOT divided by n_samples —
+                                                       cancelled by trace-norm]
+      2. cov = cov / trace(cov)                      [trace-normalize]
+      3. lam = LedoitWolf().fit(seg).shrinkage_      [LW on (n_samp, n_ch) input]
+      4. cov = (1-lam)*cov + lam*(trace(cov)/n)*I   [shrink]
 
-    LW is fitted on the raw segment (n_samp x n_ch) — this is the exact
-    oracle shrinkage coefficient, not an approximation from the cov matrix.
-    The raw segment is available here and discarded after, so this is the
-    only place where exact LW can be computed.
+    No demeaning here — baseline subtraction is done in _epoch_task before
+    this function is called (same as online where _get_baseline_corrected_window
+    subtracts the fixation mean before _classify_window computes the cov).
+    Demeaning twice (once via baseline, once here) would differ from the online
+    path which does it zero times inside the cov step.
 
     Riemannian whitening (step 3 in al0_builddecoder.py) is still applied
     centrally after all epochs are stacked.
     """
     from sklearn.covariance import LedoitWolf
-    x   = eeg - eeg.mean(axis=0)           # demean (n_samp, n_ch)
-    n   = x.shape[1]
-    cov = x.T @ x / x.shape[0]             # sample covariance
+    # eeg: (n_samp, n_ch) — already baseline-corrected by _epoch_task
+    n   = eeg.shape[1]
+    cov = eeg.T @ eeg                               # (n_ch, n_ch) — matches online window @ window.T
     tr  = np.trace(cov)
     if tr > 0:
-        cov = cov / tr                      # step 1: trace-normalize
-    lam = LedoitWolf().fit(x).shrinkage_    # step 2: exact LW from raw segment
+        cov = cov / tr                              # step 1: trace-normalize
+    lam = LedoitWolf().fit(eeg).shrinkage_          # step 2: LW on (n_samp, n_ch)
     mu  = np.trace(cov) / n
     return (1 - lam) * cov + lam * mu * np.eye(n)  # step 3: shrink
 
@@ -458,15 +461,21 @@ def _epoch_task(eeg, events, trig_start, trig_end,
     Extract sliding-window epochs from task periods.
     Uses last dur_use seconds of each trial (matches MATLAB durConsidered).
 
-    Baseline subtraction (matching reference pipeline):
-      The mean of the 1 s pre-stimulus window is subtracted from every
-      sliding-window epoch before covariance estimation.  If fewer than
-      16 samples are available before the trial onset the window is not
-      baselined (avoids subtracting near-zero means at the very start of
-      a recording).
+    Baseline subtraction:
+      The mean of the fixed baseline_samp window immediately before trial
+      onset is subtracted from every sliding-window epoch before covariance
+      estimation. This matches ndf_main_adap._compute_baseline(), which takes
+      the mean of the last BASELINE_DURATION seconds of the fixation period
+      (the window immediately before the task-start trigger).
+
+      baseline_samp = int(BASELINE_DURATION * fs) = int(2.0 * 512) = 1024 samples
+
+      If fewer than baseline_samp samples exist before trial onset, all
+      available pre-trial samples are used. If fewer than 16 samples exist
+      (first event in recording), no baseline is applied.
     """
     feats, labels = [], []
-    baseline_samp = int(1.0 * fs)   # 1 s pre-stimulus baseline window
+    baseline_samp = int(2.0 * fs)   # matches config.BASELINE_DURATION = 2.0 s online
 
     for i, (samp, typ) in enumerate(events):
         if typ not in trig_start:
@@ -485,13 +494,14 @@ def _epoch_task(eeg, events, trig_start, trig_end,
         # Use last dur_use seconds
         task_start = max(samp, task_end - int(dur_use * fs))
 
-        # Pre-stimulus baseline: all filtered EEG from recording start to
-        # trial onset — matches reference pipeline's
-        #   baseline = filtered_global[:, :baseline_end].mean(axis=1)
-        # Longer window = more stable mean; falls back to zero if trial is
-        # the very first event (fewer than 16 samples available).
+        # Fixed pre-stimulus baseline: the baseline_samp samples immediately
+        # before trial onset — matches online _compute_baseline() which takes
+        # _get_window(baseline_samples) at the fixation-end trigger.
+        # Falls back to all available pre-trial samples if the trial starts
+        # too early in the recording, and to zero if fewer than 16 samples exist.
         if samp >= 16:
-            baseline = eeg[:samp, :].mean(axis=0, keepdims=True)
+            b_start  = max(0, samp - baseline_samp)
+            baseline = eeg[b_start:samp, :].mean(axis=0, keepdims=True)  # (1, n_ch)
         else:
             baseline = np.zeros((1, eeg.shape[1]))
 
