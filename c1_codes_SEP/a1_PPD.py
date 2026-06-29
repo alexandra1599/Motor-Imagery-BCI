@@ -1,14 +1,11 @@
-
 ## Packages to import:
-import serial
 import sys
 import os
 from pathlib import Path
 import numpy as np
 dirP = os.path.abspath(os.path.join(os.getcwd(), os.pardir))
-# #print(dirP + '/4_ref_other')
-sys.path.append(dirP + '/c2_codes_BCI/z1_ref_other/0_lib')
-sys.path.append(dirP + '/c2_codes_BCI/c1_codes/1_packages')
+sys.path.append(dirP + '/c1_codes_SEP/z1_ref_other/0_lib')
+sys.path.append(dirP + '/c1_codes_SEP/c1_codes/1_packages')
 
 ## Other Packages:
 import pygame
@@ -18,6 +15,7 @@ import random
 from pygame.locals import *
 import pyautogui
 import math
+import socket
 
 ## LOAD CONFIGURATIONS FOR THE TASK
 from c0_config import *
@@ -27,11 +25,23 @@ import time
 import math 
 from rehamove import * 	# Import rehamove library
 
-import cnbiloop
-from cnbiloop import BCI, BCI_tid
 from python_client import Trigger
 
-from serialCommunication import SerialWriter
+
+# *************************************************************************************************
+# UDP Marker Functions
+# *************************************************************************************************
+def send_udp_message(sock, ip, port, message):
+    sock.sendto(message.encode('utf-8'), (ip, port))
+    print(f"Sent UDP message to {ip}:{port}: {message}")
+
+# Setup UDP
+udp_marker = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+ip   = '127.0.0.1'
+port = 12345
+MSG_RUN   = '32766'  # start / end of run
+MSG_PPD_1 = '201'    # first pulse of PPD pair
+MSG_PPD_2 = '202'    # second pulse of PPD pair
 
 
 black=(0,0,0)
@@ -39,13 +49,6 @@ white=(225,225,225)
 
 pygame.init()
 font = pygame.font.Font('freesansbold.ttf', 32)
-
-bci = BCI_tid.BciInterface()
-
-def sendTiD(Event_):
-#    pass
-	bci.id_msg_bus.SetEvent(Event_)
-	bci.iDsock_bus.sendall(str.encode(bci.id_serializer_bus.Serialize()))
 
 screen = pyautogui.size();
 
@@ -95,7 +98,7 @@ print('hardwareTrigger = ' + str(hardwareTrigger))
 ##################################
 ######## RUN STARTS HERE #########
 ##################################
-sendTiD(32766)  # send Event CUE: 55555 to LOOP to indicate start of TESS
+send_udp_message(udp_marker, ip, port, MSG_RUN)  # indicate start of run
 # Left hand and right HandArrows and up arrow
 screen.fill(black)  # clear display
 text = font.render('Rest', True, white)
@@ -127,15 +130,15 @@ while stimCnt<=repetitions:
 
 	FES.custom_pulse(FES_channel, pulsearray)
 	if hardwareTrigger:
-		parallel.signal(101)
-	sendTiD(101)  # send Event CU
+		parallel.signal(201)
+	send_udp_message(udp_marker, ip, port, MSG_PPD_1)  # first pulse of PPD pair
 
 	time.sleep(PPD_IPI/1000)
 	FES.custom_pulse(FES_channel, pulsearray)
 
 	if hardwareTrigger:
-		parallel.signal(201)
-	sendTiD(201)  # send Event CU
+		parallel.signal(202)
+	send_udp_message(udp_marker, ip, port, MSG_PPD_2)  # second pulse of PPD pair
 
 	time.sleep(restTime+random.random())
 	stimCnt = stimCnt+1
@@ -145,7 +148,7 @@ screen.fill(black)  # clear display
 
 
 	
-sendTiD(32766)  # send Event CUE: 55555 to LOOP to indicate start of TESS
+send_udp_message(udp_marker, ip, port, MSG_RUN)  # indicate end of run
 logFile = sys.argv[1]
 hand = sys.argv[2]
 print(logFile)
@@ -161,4 +164,3 @@ f.write("sensoryIntensity %f\r\n" % (sensoryIntensity))
 f.write("motorIntensity %f\r\n" % (motorIntensity))
 f.write("stimulated hand %s\r\n" % (hand))
 f.close()
-
