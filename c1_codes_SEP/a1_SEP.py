@@ -1,4 +1,3 @@
-
 ## Packages to import:
 import sys
 import os
@@ -7,7 +6,7 @@ import numpy as np
 dirP = os.path.abspath(os.path.join(os.getcwd(), os.pardir))
 # #print(dirP + '/4_ref_other')
 sys.path.append(dirP + '/z1_ref_other/0_lib')
-sys.path.append(dirP + '/c1_codes/1_packages')
+sys.path.append(dirP + '/c1_codes_SEP/1_packages')
 
 ## Other Packages:
 import pygame
@@ -44,8 +43,7 @@ udp_marker = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 ip   = '127.0.0.1'
 port = 12345
 message1  = '32766'  # start of Run
-message2  = '10'   # second rest period post stimulation
-message3  = '11'    
+message2  = '101'    # SEP single pulse
 
 
 # Create LSL stream for markers
@@ -141,7 +139,7 @@ while stimCnt<=repetitions:
 	if hardwareTrigger:
 		parallel.signal(101)
 
-	sendTiD(101)  # send Event CU
+	send_udp_message(udp_marker, ip, port, message2)  # SEP single pulse
 	time.sleep(restTime+0.5*random.random())
 	stimCnt = stimCnt+1
 
@@ -167,4 +165,3 @@ f.write("sensoryIntensity %f\r\n" % (sensoryIntensity))
 f.write("motorIntensity %f\r\n" % (motorIntensity))
 f.write("stimulated hand %s\r\n" % (hand))
 f.close()
-
